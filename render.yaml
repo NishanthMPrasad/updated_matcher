@@ -16,10 +16,3 @@ services:
         value: "1"
       - key: PYTHONUNBUFFERED
         value: "1"
-    mounts:
-      - volumeName: uploads
-        path: /opt/render/project/src/uploads
-
-volumes:
-  - name: uploads
-    sizeGB: 1
