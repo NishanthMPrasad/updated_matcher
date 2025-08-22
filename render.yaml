@@ -1,10 +1,21 @@
 services:
   - type: web
-    name: resume-backend
+    name: resume-jd-matcher
     env: python
     plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    region: oregon
+    buildCommand: |
+      python -m pip install -U pip setuptools wheel
+      pip install -r requirements.txt
+      python -m spacy download en_core_web_sm
+      python -c "import nltk; [nltk.download(p, quiet=True) for p in ['punkt','averaged_perceptron_tagger','wordnet','stopwords']]"
+    startCommand: uvicorn app_main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PIP_EXTRA_INDEX_URL
+        value: https://download.pytorch.org/whl/cpu
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
