@@ -26,10 +26,11 @@
     table{border-collapse:collapse;width:100%}
     th,td{border:1px solid #e8eef7;padding:8px;text-align:left}
     .chips{margin-top:8px}
+    #errorBox{white-space:pre-wrap;background:#fff6f6;border:1px solid #ffd1d1;color:#8a1f1f;border-radius:10px;padding:10px;margin-top:8px;display:none}
   </style>
 </head>
 <body>
-<header>Resume–JD Matching Plugin <small>UI v2025-08-21</small></header>
+<header>Resume–JD Matching Plugin <small>UI v2025-08-22</small></header>
 
 <div class="container">
   <!-- Resume uploader -->
@@ -70,6 +71,7 @@
     <span id="status" class="hint"></span>
   </div>
 
+  <div id="errorBox"></div>
   <div id="results"></div>
 </div>
 
@@ -81,6 +83,16 @@
   const jdInput     = $('#jdFiles');
   const jdList      = $('#jdList');
   const statusEl    = $('#status');
+  const errorBox    = $('#errorBox');
+
+  function showError(msg){
+    errorBox.style.display = 'block';
+    errorBox.textContent = msg;
+  }
+  function clearError(){
+    errorBox.style.display = 'none';
+    errorBox.textContent = '';
+  }
 
   function chips(el, files){
     el.innerHTML = '';
@@ -103,9 +115,7 @@
       inputEl.files = dt.files;
       chips(listEl, inputEl.files);
     });
-    // Click anywhere in the drop zone to trigger the hidden input
     zoneEl.addEventListener('click', (ev) => {
-      // prevent double-open when clicking the label
       if (ev.target.tagName !== 'LABEL') inputEl.click();
     });
   }
@@ -164,10 +174,19 @@
   }
 
   async function runMatch(){
+    clearError();
     const resumes = resumeInput.files;
     const jds     = jdInput.files;
-    if (!resumes.length) return alert('Please upload at least one resume.');
-    if (!jds.length)     return alert('Please upload at least one JD.');
+
+    if (!resumes.length) {
+      alert('Please upload at least one resume.');
+      return;
+    }
+    // If you want backend fallback for no JDs, comment the next 3 lines:
+    if (!jds.length) {
+      alert('Please upload at least one JD.');
+      return;
+    }
 
     statusEl.textContent = 'processing…';
     const minPct    = parseFloat($('#minPct').value || '0');
@@ -177,40 +196,70 @@
     const formDatas = [];
     for (const res of resumes) {
       const fd = new FormData();
-      fd.append('resume', res);
-      for (const jd of jds) fd.append('jd_files', jd);
+      fd.append('resume', res);                 // exact key
+      if (jds && jds.length) {
+        for (const jd of jds) fd.append('jd_files', jd); // repeat same key
+      }
       formDatas.push(fd);
     }
 
     try {
       const tables = await Promise.all(
-        formDatas.map(fd => fetch('/upload', { method: 'POST', body: fd }).then(r => r.text()))
+        formDatas.map(async fd => {
+          const r = await fetch('/upload', { method: 'POST', body: fd });
+          if (!r.ok) {
+            const ct = r.headers.get('content-type') || '';
+            const body = ct.includes('application/json') ? JSON.stringify(await r.json()) : await r.text();
+            throw new Error(`Upload failed (${r.status}). ${body}`);
+          }
+          return await r.text();
+        })
       );
+
       const parsed = tables.map((html, idx) => {
         const rows = parseResultTable(html)
           .filter(r => r.score >= minPct && r.matched.length >= minSkills);
         rows.sort((a,b)=> sortBy==='desc' ? b.score - a.score : a.score - b.score);
         return { name: resumes[idx].name, rows };
       });
+
       renderCards(parsed);
       statusEl.textContent = 'ready';
     } catch (e) {
       console.error(e);
       statusEl.textContent = 'error';
-      alert('Something went wrong while matching. Check console for details.');
+      showError(String(e.message || e));
+      alert('Upload failed. See error box for details.');
     }
   }
 
   $('#matchBtn').addEventListener('click', runMatch);
 
   $('#csvBtn').addEventListener('click', async () => {
-    if (!resumeInput.files.length || !jdInput.files.length) {
-      alert('Upload a resume and at least one JD first.'); return;
+    clearError();
+    if (!resumeInput.files.length) {
+      alert('Upload a resume first.');
+      return;
     }
+    // Require JD for CSV; if you want fallback, remove this:
+    if (!jdInput.files.length) {
+      alert('Upload at least one JD first.');
+      return;
+    }
+
     const fd = new FormData();
     fd.append('resume', resumeInput.files[0]);
     for (const jd of jdInput.files) fd.append('jd_files', jd);
+
     const resp = await fetch('/download_csv', { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const ct = resp.headers.get('content-type') || '';
+      const body = ct.includes('application/json') ? JSON.stringify(await resp.json()) : await resp.text();
+      showError(`CSV download failed (${resp.status}). ${body}`);
+      alert('CSV download failed. See error box for details.');
+      return;
+    }
+
     const blob = await resp.blob();
     const url  = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -218,7 +267,6 @@
     URL.revokeObjectURL(url);
   });
 
-  // mark UI ready
   statusEl.textContent = 'ready';
 })();
 </script>
