@@ -1,9 +1,26 @@
 services:
   - type: web
-    name: resume_matcher
-    env: docker
+    name: resume-jd-matcher
+    env: python
     plan: free
-    rootDir: .
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /healthz
-    autoDeploy: true
+    region: oregon
+    buildCommand: |
+      pip install -r requirements.txt
+      python -m spacy download en_core_web_sm
+      python - <<'PY'
+import nltk
+for p in ["punkt","averaged_perceptron_tagger","wordnet","stopwords"]:
+    nltk.download(p, quiet=True)
+PY
+    startCommand: uvicorn app_main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PIP_EXTRA_INDEX_URL
+        value: https://download.pytorch.org/whl/cpu
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+    disks:
+      - name: uploads
+        mountPath: /opt/render/project/src/uploads
+        sizeGB: 1
