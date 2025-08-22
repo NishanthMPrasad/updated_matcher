@@ -1,18 +1,13 @@
 services:
   - type: web
-    name: resume-jd-matcher
+    name: updated-matcher
     env: python
-    plan: free
-    region: oregon
     buildCommand: |
+      pip install --upgrade pip
       pip install -r requirements.txt
       python -m spacy download en_core_web_sm
       python -c "import nltk; [nltk.download(p, quiet=True) for p in ['punkt','averaged_perceptron_tagger','wordnet','stopwords']]"
-    startCommand: uvicorn app_main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app_main:app --host 0.0.0.0 --port 10000
     envVars:
-      - key: PIP_EXTRA_INDEX_URL
-        value: https://download.pytorch.org/whl/cpu
-      - key: PYTHONDONTWRITEBYTECODE
-        value: "1"
-      - key: PYTHONUNBUFFERED
-        value: "1"
+      - key: PORT
+        value: 10000
